@@ -7,15 +7,16 @@ Il récupère les derniers articles de plusieurs flux RSS, filtre ceux déjà pu
 ## Fonctionnement
 
 ```
-flux RSS → fetchNews.js → filterNews.js → sendDiscord.js → webhook Discord
-             (récupération)   (date + mots-clés   (embeds, max 10
-                              + anti-doublon)      par message)
+flux RSS → fetchNews.js → filterNews.js → summarize.js → sendDiscord.js → webhook Discord
+             (récupération)   (date + mots-clés   (résumé LLM      (embeds, max 10
+                              + anti-doublon)      + pertinence)     par message)
 ```
 
 1. **Récupération** : lit chaque flux de `config/sources.json` en parallèle (`rss-parser`). Si un flux échoue (et qu'un `fallbackUrl` est défini), il est réessayé ; sinon l'erreur est logguée et les autres sources continuent.
 2. **Filtrage** : ne garde que les articles des dernières `LOOKBACK_HOURS` (24 par défaut), puis applique les filtres `INCLUDE_KEYWORDS` / `EXCLUDE_KEYWORDS`.
 3. **Anti-doublon** : les liens déjà envoyés sont conservés dans `sent-articles.json`. Un lien déjà vu (ou présent dans plusieurs flux) n'est jamais re-envoyé.
-4. **Envoi** : les articles sont regroupés en messages d'au plus 10 embeds (limite Discord). Les mots-clés prioritaires colorent l'embed en **rouge** (CVE, zero-day, exploit, vulnérabilité critique) ou **orange** (ransomware, faille), sinon **vert**.
+4. **Résumé LLM** (optionnel, Groq) : chaque article reçoit un résumé de 1-2 phrases en français, une note de pertinence (1-10), et un flag « à lire en entier ». Les articles sont ensuite réordonnés du plus pertinent au moins pertinent.
+5. **Envoi** : les articles sont regroupés en messages d'au plus 10 embeds (limite Discord). Les mots-clés prioritaires colorent l'embed en **rouge** (CVE, zero-day, exploit, vulnérabilité critique) ou **orange** (ransomware, faille), sinon **vert**. Les articles à lire en entier portent un badge **⭐**.
 
 ## Prérequis
 
@@ -53,10 +54,29 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/<id>/<token>
 | `INCLUDE_KEYWORDS` | *(vide)* | Ne garder que les articles contenant un de ces mots-clés (séparés par des virgules). Vide = tous |
 | `EXCLUDE_KEYWORDS` | *(vide)* | Exclure les articles contenant un de ces mots-clés |
 | `PRIORITY_KEYWORDS` | voir `.env.example` | Mots-clés de priorité (préfixe `!` = niveau critique) |
+| `GROQ_API_KEY` | *(vide)* | Clé API Groq gratuite (résumés LLM). Vide = envoi sans résumés |
+| `LLM_MODEL` | `llama-3.3-70b-versatile` | Modèle Groq utilisé |
+| `ENABLE_SUMMARIZATION` | `true` | Activer/désactiver le résumé LLM |
+| `MAX_ARTICLES_TO_SUMMARIZE` | `12` | Nombre max d'articles résumés par cycle (quota free tier) |
 | `SCHEDULE_CRON` | `0 8 * * *` | Planification quotidienne (Europe/Paris) |
 | `BOT_USERNAME` | `Cyber News Bot` | Nom affiché dans Discord |
 | `BOT_ICON_URL` | *(vide)* | URL d'avatar du bot |
 | `MAX_EMBEDS_PER_MESSAGE` | `10` | Nombre max d'embeds par message (max Discord : 10) |
+
+## Résumé LLM (Groq free tier)
+
+Le bot peut faire résumer chaque article par un LLM gratuit et classer le digest du plus pertinent au moins pertinent, avec un badge **⭐ À lire en entier** sur les articles qui valent le détour.
+
+1. Créez un compte gratuit sur **https://console.groq.com** (connexion Google/GitHub).
+2. Allez dans **API Keys** → **Create API Key**, copiez la clé (`gsk_...`).
+3. Mettez-la dans `.env` :
+   ```
+   GROQ_API_KEY=gsk_xxxxxxxxxxxx
+   ```
+
+Le modèle par défaut `llama-3.3-70b-versatile` est gratuit (quota ≈ 14 400 tokens/jour, soit ~12 résumés/jour). Si le LLM échoue ou si la clé est absente, le bot envoie quand même les articles (sans résumé) — le résumé ne bloque jamais l'envoi.
+
+Testez avec `npm run dry-run` : la sortie affiche le résumé et la note de pertinence de chaque article sans rien poster sur Discord.
 
 ## Utilisation
 
@@ -92,8 +112,8 @@ Le dépôt contient déjà `.github/workflows/daily-news.yml` qui tourne chaque 
 
 1. Poussez ce projet sur GitHub.
 2. Onglet **Settings** → **Secrets and variables** → **Actions** → **New repository secret** :
-   - Nom : `DISCORD_WEBHOOK_URL`
-   - Valeur : l'URL du webhook
+   - `DISCORD_WEBHOOK_URL` : l'URL du webhook
+   - `GROQ_API_KEY` : la clé Groq (pour les résumés LLM)
 3. Le workflow s'exécutera automatiquement. L'anti-doublon (`sent-articles.json`) est conservé d'une exécution à l'autre via le cache GitHub.
 4. Vous pouvez aussi déclencher une exécution manuelle : onglet **Actions** → **daily-news** → **Run workflow**.
 
@@ -144,6 +164,7 @@ cyber-news-bot/
 ├── src/
 │   ├── fetchNews.js          # récupération RSS + normalisation des dates
 │   ├── filterNews.js         # filtre par date / mots-clés / anti-doublon
+│   ├── summarize.js          # résumé LLM Groq + note de pertinence + classement
 │   ├── sendDiscord.js        # construction et envoi des embeds Discord
 │   ├── logger.js             # logs console + fichier
 │   └── index.js              # orchestration + modes (one-shot / démon / dry-run)

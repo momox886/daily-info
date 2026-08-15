@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json.schemastore.org/cyber-news-bot.sources.json",
+  "sources": [
+    {
+      "name": "The Hacker News",
+      "url": "https://feeds.feedburner.com/TheHackersNews",
+      "category": "cybersec"
+    },
+    {
+      "name": "BleepingComputer",
+      "url": "https://www.bleepingcomputer.com/feed/",
+      "category": "cybersec"
+    },
+    {
+      "name": "Krebs on Security",
+      "url": "https://krebsonsecurity.com/feed/",
+      "category": "cybersec"
+    },
+    {
+      "name": "Dark Reading",
+      "url": "https://www.darkreading.com/rss.xml",
+      "category": "cybersec"
+    },
+    {
+      "name": "CERT-FR Avis",
+      "url": "https://www.cert.ssi.gouv.fr/avis/feed/",
+      "category": "cert"
+    },
+    {
+      "name": "CERT-FR Alertes",
+      "url": "https://www.cert.ssi.gouv.fr/alerte/feed/",
+      "category": "cert"
+    },
+    {
+      "name": "ZDNet France Sécurité",
+      "url": "https://www.zdnet.fr/feeds/rss/actualites/informatique/securite/",
+      "fallbackUrl": "https://www.zdnet.fr/feeds/rss/",
+      "category": "it"
+    },
+    {
+      "name": "The Record",
+      "url": "https://therecord.media/feed/",
+      "category": "cybersec"
+    }
+  ]
+}

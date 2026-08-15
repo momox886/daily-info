@@ -1,0 +1,20 @@
+{
+  "name": "cyber-news-bot",
+  "version": "1.0.0",
+  "description": "Envoie chaque jour un résumé des actualités cyber/IT dans un salon Discord via un webhook",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "daily": "node src/index.js --once",
+    "dry-run": "node src/index.js --once --dry-run"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "node-cron": "^3.0.3",
+    "rss-parser": "^3.13.0"
+  }
+}

@@ -1,0 +1,125 @@
+// Client LLM gratuit via l'API Groq (compatible OpenAI).
+// Récupère un résumé + une note de pertinence pour chaque article, et repère
+// les articles qui méritent une lecture en entier.
+
+const DEFAULT_MODEL = 'llama-3.3-70b-versatile';
+const DEFAULT_BASE_URL = 'https://api.groq.com/openai/v1';
+const DEFAULT_MAX_ARTICLES = 12; // limite des résumés par cycle (quotas free tier)
+
+const SYSTEM_PROMPT = `
+Tu es un analyste cybersécurité expérimenté qui prépare un digest quotidien
+pour des professionnels de l'informatique francophones.
+
+On te fournit une liste JSON d'articles : [{"index", "title", "description", "source", "category"}].
+
+Pour CHAQUE article, réponds avec :
+- "summary" : un résumé de 1 à 2 phrases en FRANÇAIS, objectif et factuel.
+- "relevance" : un entier de 1 à 10 mesurant la pertinence pour un
+  professionnel de la cybersécurité (10 = indispensable, 1 = hors sujet).
+  Un article hors sujet informatique/cyber doit recevoir une note basse.
+- "worthFullRead" : true si l'article mérite d'être lu en entier (incident
+  majeur, technique approfondie, recommandations exploitables), sinon false.
+
+Réponds STRICTEMENT en JSON valide, sans texte autour, au format :
+{"articles":[{"index":0,"summary":"...","relevance":8,"worthFullRead":true}]}
+`;
+
+/**
+ * Extrait et parse un objet JSON à partir d'une réponse texte (robuste :
+ * tolère des sauts de ligne ou un bloc de code ```json ... ```).
+ * @param {string} text
+ * @returns {object|null}
+ */
+function extractJson(text) {
+  if (!text) return null;
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const candidate = fenced ? fenced[1] : text;
+  const start = candidate.indexOf('{');
+  const end = candidate.lastIndexOf('}');
+  if (start === -1 || end === -1) return null;
+  try {
+    return JSON.parse(candidate.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Appelle Groq pour résumer les articles et les ordonner par pertinence.
+ * En cas d'échec, renvoie les articles inchangés (l'envoi ne doit jamais
+ * être bloqué par le LLM).
+ * @param {Array<object>} articles
+ * @param {object} env
+ * @returns {Promise<Array<object>>} articles enrichis et réordonnés
+ */
+export async function summarizeArticles(articles, env = process.env) {
+  const apiKey = env.GROQ_API_KEY || env.LLM_API_KEY;
+  if (!apiKey) {
+    throw new Error('GROQ_API_KEY manquant dans .env — résumés désactivés');
+  }
+
+  const baseUrl = env.GROQ_BASE_URL || DEFAULT_BASE_URL;
+  const model = env.LLM_MODEL || DEFAULT_MODEL;
+  const max = Number(env.MAX_ARTICLES_TO_SUMMARIZE) || DEFAULT_MAX_ARTICLES;
+  const batch = articles.slice(0, max).map((a, i) => ({
+    index: i,
+    title: a.title,
+    description: (a.description || '').slice(0, 300),
+    source: a.source,
+    category: a.category,
+  }));
+
+  const res = await fetch(`${baseUrl.replace(/\/$/, '')}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.2,
+      max_tokens: 2048,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: JSON.stringify(batch) },
+      ],
+    }),
+  });
+
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`Groq a répondu ${res.status} : ${detail.slice(0, 300)}`);
+  }
+
+  const data = await res.json();
+  const content = data.choices?.[0]?.message?.content;
+  const parsed = extractJson(content);
+  const results = parsed?.articles;
+  if (!Array.isArray(results) || results.length === 0) {
+    throw new Error('Groq a renvoyé une réponse JSON inexploitable');
+  }
+
+  // Associe chaque résultat au bon article (par index), puis réordonne
+  // du plus pertinent au moins pertinent. Les articles non résumés (au-delà
+  // du quota max) restent à la fin, dans leur ordre d'origine.
+  const byIndex = new Map(results.map((r) => [r.index, r]));
+  const enriched = articles.map((article, i) => {
+    const result = byIndex.get(i);
+    if (!result || typeof result.relevance !== 'number') return article;
+    return {
+      ...article,
+      summary: typeof result.summary === 'string' ? result.summary.trim().slice(0, 500) : '',
+      relevance: result.relevance,
+      highlight: Boolean(result.worthFullRead),
+    };
+  });
+
+  const sorted = [...enriched].sort((a, b) => {
+    const ra = typeof a.relevance === 'number' ? a.relevance : -1;
+    const rb = typeof b.relevance === 'number' ? b.relevance : -1;
+    return rb - ra;
+  });
+
+  return sorted;
+}

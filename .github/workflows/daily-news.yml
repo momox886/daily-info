@@ -1,0 +1,39 @@
+name: daily-news
+
+on:
+  schedule:
+    # Tous les jours à 06:00 UTC (= 08:00 heure de Paris en hiver,
+    # 07:00 en été). Le cron GitHub est toujours en UTC.
+    - cron: "0 6 * * *"
+  workflow_dispatch: # permet un lancement manuel depuis l'onglet Actions
+
+permissions:
+  contents: read
+
+jobs:
+  daily-news:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout du dépôt
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Restaurer l'anti-doublon (sent-articles.json)
+        uses: actions/cache@v4
+        with:
+          path: sent-articles.json
+          key: sent-articles-${{ runner.os }}
+
+      - name: Installation des dépendances
+        run: npm ci
+
+      - name: Exécution du bot (one-shot)
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: npm run daily

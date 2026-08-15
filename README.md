@@ -9,14 +9,17 @@ Il récupère les derniers articles de plusieurs flux RSS, filtre ceux déjà pu
 ```
 flux RSS → fetchNews.js → filterNews.js → summarize.js → sendDiscord.js → webhook Discord
              (récupération)   (date + mots-clés   (résumé LLM      (À la une + embeds,
-                              + anti-doublon)      + pertinence)     max 10/message)
+              + images)        + anti-doublon)      + pertinence)     max 10/message)
+                            → sourceHealth.js
+                              (alertes sources en panne)
 ```
 
-1. **Récupération** : lit chaque flux de `config/sources.json` en parallèle (`rss-parser`). Si un flux échoue (et qu'un `fallbackUrl` est défini), il est réessayé ; sinon l'erreur est logguée et les autres sources continuent.
+1. **Récupération** : lit chaque flux de `config/sources.json` (14 sources : THN, BleepingComputer, Krebs, Dark Reading, CERT-FR, ZDNet, The Record, CISA, Help Net Security, Malwarebytes, Schneier, The Register, CSO...) en parallèle (`rss-parser`). Si un flux échoue (et qu'un `fallbackUrl` est défini), il est réessayé ; sinon l'erreur est logguée et les autres sources continuent. Une **image** d'illustration est extraite de l'élément RSS quand elle existe (thumbnail dans l'embed).
 2. **Filtrage** : ne garde que les articles des dernières `LOOKBACK_HOURS` (24 par défaut), puis applique les filtres `INCLUDE_KEYWORDS` / `EXCLUDE_KEYWORDS`.
 3. **Anti-doublon** : les liens déjà envoyés sont conservés dans `sent-articles.json`. Un lien déjà vu (ou présent dans plusieurs flux) n'est jamais re-envoyé.
 4. **Résumé LLM** (optionnel, Groq) : chaque article reçoit un résumé de 1-2 phrases en français, des **détails techniques** (CVE, CVSS, produit/version affectés, vecteur, IoC), une note de pertinence (1-10), une **gravité** (critical/high/medium/low) et un flag « à lire en entier ». Les articles couvrant le **même sujet** sont fusionnés (seule la meilleure source est gardée) puis classés du plus pertinent au moins pertinent.
-5. **Envoi** : un message **« À la une du jour »** présente les `TOP_N` meilleurs articles (texte cliquable + résumé), puis les autres partent en embeds (max 10 par message). La couleur de l'embed suit la **gravité LLM** (rouge = critical, orange = high, vert sinon ; les mots-clés CVE/ransomware/faille servent de repli sans LLM). Les articles à lire en entier portent un badge **⭐**.
+5. **Santé des sources** : l'état de chaque flux est suivi dans `source-health.json`. Une source qui échoue `SOURCE_ALERT_THRESHOLD` fois de suite déclenche une **alerte Discord** (avec la date de son dernier succès) ; son retour à la normale est aussi annoncé.
+6. **Envoi** : un **marqueur de séparation** (`════ 🆕 Articles du jour — N ════`) démarque le nouveau lot des articles déjà postés, suivi d'un **bandeau récapitulatif** (date, nombre d'articles, santé des sources). Le message **« À la une du jour »** présente les `TOP_N` meilleurs articles (texte cliquable + résumé + thumbnail si image), puis les autres partent en embeds (max 10 par message) sous un séparateur **« Autres articles »**. La couleur de l'embed suit la **gravité LLM** (rouge = critical, orange = high, vert sinon) et un **emoji de gravité** (🔴🟠🟡🟢) est ajouté au titre ; les mots-clés CVE/ransomware/faille servent de repli sans LLM. Les articles à lire en entier portent un badge **⭐**.
 
 ## Prérequis
 
@@ -57,10 +60,13 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/<id>/<token>
 | `GROQ_API_KEY` | *(vide)* | Clé API Groq gratuite (résumés LLM). Vide = envoi sans résumés |
 | `LLM_MODEL` | `llama-3.3-70b-versatile` | Modèle Groq utilisé |
 | `ENABLE_SUMMARIZATION` | `true` | Activer/désactiver le résumé LLM |
-| `MAX_ARTICLES_TO_SUMMARIZE` | `12` | Nombre max d'articles résumés par cycle (quota free tier) |
+| `MAX_ARTICLES_TO_SUMMARIZE` | `15` | Nombre max d'articles résumés par cycle (quota free tier) |
 | `ENABLE_SMART_DEDUP` | `true` | Fusionner les articles couvrant le même sujet (une seule source gardée) |
 | `ENABLE_TOP3` | `true` | Afficher un message « À la une » en tête du digest |
 | `TOP_N` | `3` | Nombre d'articles dans le message « À la une » |
+| `ENABLE_SOURCE_ALERTS` | `true` | Alerter sur Discord quand une source RSS échoue plusieurs fois de suite |
+| `SOURCE_ALERT_THRESHOLD` | `3` | Nombre d'échecs consécutifs avant l'alerte |
+| `ENABLE_DAY_BANNER` | `true` | Marqueur de séparation + bandeau récapitulatif en tête du digest |
 | `SCHEDULE_CRON` | `0 8 * * *` | Planification quotidienne (Europe/Paris) |
 | `BOT_USERNAME` | `Cyber News Bot` | Nom affiché dans Discord |
 | `BOT_ICON_URL` | *(vide)* | URL d'avatar du bot |
@@ -121,7 +127,7 @@ Le dépôt contient déjà `.github/workflows/daily-news.yml` qui tourne chaque 
 2. Onglet **Settings** → **Secrets and variables** → **Actions** → **New repository secret** :
    - `DISCORD_WEBHOOK_URL` : l'URL du webhook
    - `GROQ_API_KEY` : la clé Groq (pour les résumés LLM)
-3. Le workflow s'exécutera automatiquement. L'anti-doublon (`sent-articles.json`) est conservé d'une exécution à l'autre via le cache GitHub.
+3. Le workflow s'exécutera automatiquement. L'anti-doublon (`sent-articles.json`) et l'état de santé des sources (`source-health.json`) sont **committés dans le repo** à chaque exécution : contrairement au cache GitHub (expiré après 7 jours), l'état persiste indéfiniment et évite les doublons d'une exécution à l'autre.
 4. Vous pouvez aussi déclencher une exécution manuelle : onglet **Actions** → **daily-news** → **Run workflow**.
 
 > Les crons GitHub sont en **UTC** : pour viser 08:00 heure de Paris toute l'année il faudrait deux entrées (06:00 UTC en hiver, 07:00 UTC en été), le workflow n'en retient qu'une par simplicité.
@@ -153,6 +159,7 @@ Un `.timer` systemd peut aussi appeler `npm run daily` chaque jour.
 
 - `category` est purement informatif (`cybersec`, `cert`, `it`, ...).
 - `fallbackUrl` (optionnel) : si `url` échoue, le bot tente cette URL avant d'abandonner.
+- L'**image** de l'article est extraite automatiquement des champs `media:thumbnail`, `media:content` ou `enclosure` du flux quand ils existent ; elle apparaît en miniature dans l'embed (ignorée si l'URL n'est pas une image valide).
 
 ### Note sur ZDNet
 
@@ -169,9 +176,10 @@ cyber-news-bot/
 ├── config/
 │   └── sources.json          # liste des flux RSS
 ├── src/
-│   ├── fetchNews.js          # récupération RSS + normalisation des dates
+│   ├── fetchNews.js          # récupération RSS + normalisation des dates + images
 │   ├── filterNews.js         # filtre par date / mots-clés / anti-doublon
 │   ├── summarize.js          # résumé LLM Groq + note de pertinence + classement
+│   ├── sourceHealth.js       # suivi des sources en panne + alertes Discord
 │   ├── sendDiscord.js        # construction et envoi des embeds Discord
 │   ├── logger.js             # logs console + fichier
 │   └── index.js              # orchestration + modes (one-shot / démon / dry-run)

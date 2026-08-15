@@ -5,11 +5,16 @@ import Parser from 'rss-parser';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Petit parser par défaut : on ajoute "content:encoded" pour garder une
-// description plus riche quand le flux la fournit.
+// Petit parser par défaut : on ajoute "content:encoded", les images media:*
+// et un timeout pour qu'une source morte ne bloque jamais le cycle.
 const parser = new Parser({
+  timeout: 20000,
   customFields: {
-    item: [['content:encoded', 'contentEncoded']],
+    item: [
+      ['content:encoded', 'contentEncoded'],
+      ['media:content', 'mediaContent', { keepArray: true }],
+      ['media:thumbnail', 'mediaThumbnail', { keepArray: true }],
+    ],
   },
 });
 
@@ -45,17 +50,6 @@ export function parsePubDate(value) {
 }
 
 /**
- * Charge la liste des sources RSS depuis config/sources.json.
- * @returns {Array<{name: string, url: string, category: string}>}
- */
-export function loadSources() {
-  const filePath = path.join(__dirname, '..', 'config', 'sources.json');
-  const raw = fs.readFileSync(filePath, 'utf-8');
-  const data = JSON.parse(raw);
-  return data.sources || [];
-}
-
-/**
  * Nettoie un texte issu du flux : retire les balises HTML, les espaces multiples
  * et limite la longueur.
  * @param {string} html
@@ -72,31 +66,100 @@ export function cleanHtml(html, maxLength = 300) {
 }
 
 /**
+ * Extrait une image d'article depuis le flux (media:content, enclosure,
+ * media:thumbnail ou première <img> du contenu). Retourne null si aucune.
+ * @param {object} item
+ * @returns {string|null}
+ */
+export function extractImage(item) {
+  if (!item) return null;
+  const enclosure = item.enclosure;
+  if (enclosure?.url && /^image\//.test(enclosure.type || '')) return enclosure.url;
+  if (Array.isArray(item.mediaContent)) {
+    const mc = item.mediaContent.find((m) => m?.url);
+    if (mc?.url) return mc.url;
+  }
+  if (Array.isArray(item.mediaThumbnail)) {
+    const mt = item.mediaThumbnail.find((m) => m?.url);
+    if (mt?.url) return mt.url;
+  }
+  const content = item.contentEncoded || item.content || '';
+  const match = content.match(/<img[^>]+src=["']([^"']+)["']/i);
+  return match ? match[1] : null;
+}
+
+/**
+ * Vérifie qu'une URL pointe bien vers une image (Content-Type image/*) et
+ * renvoie l'URL finale après redirections. Retourne null si ce n'est pas une
+ * image ou si le serveur ne répond pas. Utile pour les URLs sans extension
+ * (ex : image.theregister.com/?imageId=...) que Discord n'accepterait pas.
+ * @param {string} url
+ * @param {number} timeoutMs
+ * @returns {Promise<string|null>}
+ */
+export async function verifyImageUrl(url, timeoutMs = 6000) {
+  if (!url) return null;
+  const doFetch = (method) =>
+    fetch(url, { method, redirect: 'follow', signal: AbortSignal.timeout(timeoutMs) });
+
+  let res;
+  try {
+    res = await doFetch('HEAD');
+  } catch {
+    res = null;
+  }
+  // Certains serveurs (et CDN) refusent HEAD (405) : on retente en GET et on
+  // libère le corps immédiatement, on ne veut que les en-têtes.
+  if (!res || res.status === 405 || !res.ok) {
+    try {
+      res = await doFetch('GET');
+      if (res?.body) res.body.cancel().catch(() => {});
+    } catch {
+      return null;
+    }
+  }
+  if (!res || !res.ok) return null;
+
+  const type = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  if (!type.startsWith('image/')) return null;
+  return res.url || url;
+}
+
+/**
+ * Charge la liste des sources RSS depuis config/sources.json.
+ * @returns {Array<{name: string, url: string, category: string}>}
+ */
+export function loadSources() {
+  const filePath = path.join(__dirname, '..', 'config', 'sources.json');
+  const raw = fs.readFileSync(filePath, 'utf-8');
+  const data = JSON.parse(raw);
+  return data.sources || [];
+}
+
+/**
  * Récupère les articles d'une source RSS.
  * En cas d'échec (et si un fallbackUrl est défini dans sources.json), on tente
- * l'URL de secours. Si tout échoue, renvoie un tableau vide (ne bloque pas le reste).
+ * l'URL de secours. Renvoie toujours {ok, articles, error} : l'appelant décide
+ * (une source en échec ne bloque pas les autres).
  * @param {{name: string, url: string, fallbackUrl?: string, category: string}} source
- * @returns {Promise<Array<object>>}
+ * @returns {Promise<{ok: boolean, articles: Array<object>, error?: string}>}
  */
 export async function fetchSource(source) {
   try {
     const feed = await parser.parseURL(source.url);
-    return mapFeedItems(source, feed);
+    return { ok: true, articles: mapFeedItems(source, feed) };
   } catch (err) {
     if (source.fallbackUrl) {
-      console.warn(
-        `[fetch] Échec de "${source.name}" (${source.url}) : ${err.message} — tentative sur l'URL de secours...`,
-      );
       try {
         const feed = await parser.parseURL(source.fallbackUrl);
-        return mapFeedItems(source, feed);
+        return { ok: true, articles: mapFeedItems(source, feed) };
       } catch (fallbackErr) {
         console.error(`[fetch] Échec du fallback "${source.name}" (${source.fallbackUrl}) : ${fallbackErr.message}`);
-        return [];
+        return { ok: false, articles: [], error: fallbackErr.message };
       }
     }
     console.error(`[fetch] Échec de la source "${source.name}" (${source.url}) : ${err.message}`);
-    return [];
+    return { ok: false, articles: [], error: err.message };
   }
 }
 
@@ -118,17 +181,22 @@ function mapFeedItems(source, feed) {
       description: cleanHtml(
         item.contentSnippet || item.contentEncoded || item.summary || item.description || '',
       ),
+      image: extractImage(item),
       source: source.name,
       category: source.category,
     };
   });
 }
+
 /**
  * Récupère les articles de toutes les sources en parallèle.
- * @returns {Promise<Array<object>>}
+ * @returns {Promise<{articles: Array<object>, statuses: Array<{name: string, ok: boolean, error?: string}>}>}
  */
 export async function fetchAllNews() {
   const sources = loadSources();
   const results = await Promise.all(sources.map((s) => fetchSource(s)));
-  return results.flat();
+  return {
+    articles: results.flatMap((r) => r.articles),
+    statuses: sources.map((s, i) => ({ name: s.name, ok: results[i].ok, error: results[i].error })),
+  };
 }

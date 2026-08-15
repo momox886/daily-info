@@ -8,7 +8,7 @@ on:
   workflow_dispatch: # permet un lancement manuel depuis l'onglet Actions
 
 permissions:
-  contents: read
+  contents: write # nécessaire pour le commit-back de l'état anti-doublon
 
 jobs:
   daily-news:
@@ -23,12 +23,6 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Restaurer l'anti-doublon (sent-articles.json)
-        uses: actions/cache@v4
-        with:
-          path: sent-articles.json
-          key: sent-articles-${{ runner.os }}
-
       - name: Installation des dépendances
         run: npm ci
 
@@ -37,3 +31,18 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: npm run daily
+
+      # L'état anti-doublon (sent-articles.json) et la santé des sources
+      # (source-health.json) sont committés dans le repo : contrairement au
+      # cache GitHub (expiré au bout de 7 jours), ils persistent indéfiniment
+      # et évitent les doublons d'une exécution à l'autre.
+      # Toujours exécuté (même si l'envoi Discord a échoué) pour ne pas perdre
+      # l'état. N'engendre pas de boucle : ce workflow n'écoute pas l'événement push.
+      - name: Commit de l'état anti-doublon
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f sent-articles.json source-health.json
+          git diff --cached --quiet || git commit -m "chore: mise à jour de l'état anti-doublon"
+          git push origin main

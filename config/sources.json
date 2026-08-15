@@ -41,6 +41,36 @@
       "name": "The Record",
       "url": "https://therecord.media/feed/",
       "category": "cybersec"
+    },
+    {
+      "name": "CISA Advisories",
+      "url": "https://www.cisa.gov/cybersecurity-advisories/all.xml",
+      "category": "cert"
+    },
+    {
+      "name": "Help Net Security",
+      "url": "https://www.helpnetsecurity.com/feed/",
+      "category": "cybersec"
+    },
+    {
+      "name": "Malwarebytes Labs",
+      "url": "https://www.malwarebytes.com/blog/feed",
+      "category": "cybersec"
+    },
+    {
+      "name": "Schneier on Security",
+      "url": "https://www.schneier.com/feed/atom/",
+      "category": "cybersec"
+    },
+    {
+      "name": "The Register Security",
+      "url": "https://www.theregister.com/security/headlines.atom",
+      "category": "it"
+    },
+    {
+      "name": "CSO Online",
+      "url": "https://www.csoonline.com/feed/",
+      "category": "cybersec"
     }
   ]
 }

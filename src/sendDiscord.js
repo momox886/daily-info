@@ -81,13 +81,28 @@ function pickSeverityColor(article, keywords) {
 }
 
 /**
+ * Emoji affiché selon la gravité LLM (repérage visuel rapide dans Discord).
+ * @param {string|null|undefined} severity
+ * @returns {string}
+ */
+export function severityEmoji(severity) {
+  switch (severity) {
+    case 'critical': return '🔴';
+    case 'high': return '🟠';
+    case 'medium': return '🟡';
+    case 'low': return '🟢';
+    default: return '';
+  }
+}
+
+/**
  * Construit l'objet embed Discord d'un article.
  * @param {object} article
  * @param {object} config
  * @returns {object}
  */
 export function buildEmbed(article, config = {}) {
-  const title = article.highlight ? `⭐ ${article.title}` : article.title;
+  const title = `${severityEmoji(article.severity)} ${article.highlight ? '⭐ ' : ''}${article.title}`.trim();
 
   // Description = résumé LLM, détails techniques (LLM) puis description du flux.
   const parts = [];
@@ -105,6 +120,12 @@ export function buildEmbed(article, config = {}) {
       text: `${article.source}${article.pubDate ? ` · ${formatDate(article.pubDate)}` : ''}`,
     },
   };
+
+  // Miniature : l'URL est vérifiée (Content-Type image/*) au moment de l'envoi
+  // dans index.js — ici on n'accepte que du http(s) valide.
+  if (/^https?:\/\/\S+$/i.test(article.image || '')) {
+    embed.thumbnail = { url: article.image };
+  }
 
   // Pertinence et badge "à lire en entier" en champs d'embed quand dispo.
   if (typeof article.relevance === 'number') {
@@ -148,6 +169,8 @@ export async function sendBatch(articles, webhookUrl, options = {}) {
     username: options.botUsername || 'Cyber News Bot',
     embeds: articles.map((a) => buildEmbed(a, { keywords: options.keywords })),
   };
+  // Séparateur optionnel : texte affiché au-dessus du premier lot d'embeds.
+  if (options.headerContent) payload.content = options.headerContent;
   if (options.botIconUrl) payload.avatar_url = options.botIconUrl;
 
   const res = await fetch(webhookUrl, {
@@ -166,8 +189,9 @@ export async function sendBatch(articles, webhookUrl, options = {}) {
  * Point d'entrée d'envoi : découpe en messages et envoie tout sur Discord.
  * @param {Array<object>} articles
  * @param {object} env variables d'environnement (déjà chargées)
+ * @param {string} [headerContent] texte affiché au-dessus du premier lot (séparateur)
  */
-export async function sendNews(articles, env = process.env) {
+export async function sendNews(articles, env = process.env, headerContent) {
   if (!env.DISCORD_WEBHOOK_URL) {
     throw new Error('DISCORD_WEBHOOK_URL est manquant dans .env');
   }
@@ -180,8 +204,11 @@ export async function sendNews(articles, env = process.env) {
     keywords: parseKeywords(env.PRIORITY_KEYWORDS),
   };
 
-  for (const batch of batches) {
-    await sendBatch(batch, env.DISCORD_WEBHOOK_URL, options);
+  for (const [index, batch] of batches.entries()) {
+    await sendBatch(batch, env.DISCORD_WEBHOOK_URL, {
+      ...options,
+      headerContent: index === 0 ? headerContent : undefined,
+    });
     console.log(`[send] Message envoyé (${batch.length} articles)`);
   }
   return batches.length;
@@ -202,15 +229,102 @@ export function buildTopContent(articles) {
 }
 
 /**
- * Envoie le message "Top N du jour" via le webhook.
+ * Envoie le message "Top N du jour" via le webhook. Les articles du top qui
+ * ont une image sont aussi envoyés en embeds (thumbnail) dans le même message :
+ * le texte résume le top, les embeds apportent l'illustration.
  * @param {Array<object>} articles
  * @param {string} webhookUrl
- * @param {{botUsername?: string, botIconUrl?: string}} options
+ * @param {{botUsername?: string, botIconUrl?: string, keywords?: object}} options
  */
 export async function sendTopContent(articles, webhookUrl, options = {}) {
   const payload = {
     username: options.botUsername || 'Cyber News Bot',
     content: buildTopContent(articles),
+    embeds: articles
+      .filter((a) => /^https?:\/\/\S+$/i.test(a.image || ''))
+      .map((a) => buildEmbed(a, { keywords: options.keywords })),
+  };
+  if (payload.embeds.length === 0) delete payload.embeds;
+  if (options.botIconUrl) payload.avatar_url = options.botIconUrl;
+
+  const res = await fetch(webhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`Discord a répondu ${res.status} : ${detail.slice(0, 300)}`);
+  }
+}
+
+/**
+ * Envoie un message texte simple (alerte source en panne, etc.).
+ * @param {string} content
+ * @param {string} webhookUrl
+ * @param {{botUsername?: string, botIconUrl?: string}} options
+ */
+export async function sendAlert(content, webhookUrl, options = {}) {
+  const payload = {
+    username: options.botUsername || 'Cyber News Bot',
+    content,
+  };
+  if (options.botIconUrl) payload.avatar_url = options.botIconUrl;
+
+  const res = await fetch(webhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`Discord a répondu ${res.status} : ${detail.slice(0, 300)}`);
+  }
+}
+
+/**
+ * Envoie le message de tête du digest : un marqueur de séparation (pour
+ * démarquer visuellement le nouveau lot des articles déjà postés) suivi d'un
+ * bandeau récapitulatif (date, nombre d'articles, état des sources).
+ * @param {{total: number, sent: number, topCount: number, restCount: number,
+ *          sourcesDown: number, sourcesTotal: number,
+ *          alerts: Array<{name: string}>, recoveries: Array<string>}} stats
+ * @param {string} webhookUrl
+ * @param {{botUsername?: string, botIconUrl?: string}} options
+ */
+export async function sendBanner(stats, webhookUrl, options = {}) {
+  const day = new Date().toLocaleDateString('fr-FR', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  });
+  const separator = `════ 🆕 **Articles du jour — ${stats.sent} nouveau(x)** ════`;
+
+  const lines = [`📅 **${day.charAt(0).toUpperCase()}${day.slice(1)}**`];
+  lines.push(`- **${stats.sent}** articles envoyés (${stats.topCount} à la une, ${stats.restCount} en embeds)`);
+  lines.push(`- ${stats.total} lus au total`);
+  if (stats.sourcesTotal > 0) {
+    const ok = stats.sourcesTotal - stats.sourcesDown;
+    const health = stats.sourcesDown === 0
+      ? `✅ ${ok}/${stats.sourcesTotal} sources opérationnelles`
+      : `⚠️ ${ok}/${stats.sourcesTotal} sources opérationnelles (${stats.sourcesDown} en panne : ${stats.alerts.map((a) => a.name).join(', ') || '?'})`;
+    lines.push(`- ${health}`);
+  }
+  if (stats.recoveries.length > 0) {
+    lines.push(`- ✅ De retour : ${stats.recoveries.join(', ')}`);
+  }
+
+  const payload = {
+    username: options.botUsername || 'Cyber News Bot',
+    content: separator,
+    embeds: [
+      {
+        title: '📰 Résumé du jour',
+        description: lines.join('\n'),
+        color: stats.sourcesDown > 0 ? COLOR_ORANGE : COLOR_GREEN,
+        timestamp: new Date().toISOString(),
+      },
+    ],
   };
   if (options.botIconUrl) payload.avatar_url = options.botIconUrl;
 

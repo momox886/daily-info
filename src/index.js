@@ -9,7 +9,7 @@ import {
   filterDuplicates,
   rollbackDuplicates,
 } from './filterNews.js';
-import { sendNews, buildEmbed } from './sendDiscord.js';
+import { sendNews, sendTopContent, buildTopContent, buildEmbed } from './sendDiscord.js';
 import { summarizeArticles } from './summarize.js';
 
 const DEFAULT_TIMEZONE = 'Europe/Paris';
@@ -50,16 +50,22 @@ export async function runOnce(env = process.env, dryRun = false) {
     return { total: allArticles.length, sent: 0, errors: 0 };
   }
 
-  // 5. Résumé LLM (optionnel) : résume, note la pertinence, réordonne et
-  //    marque les articles à lire en entier. Un échec du LLM n'arrête jamais
-  //    l'envoi : on repart sur les articles bruts.
+  // 5. Résumé LLM (optionnel) : résume, note la pertinence, ajoute les détails
+  //    techniques, dédoublonne les sujets et réordonne. Un échec du LLM
+  //    n'arrête jamais l'envoi : on repart sur les articles bruts.
   let ready = fresh;
+  let droppedByDedup = [];
   if (String(env.ENABLE_SUMMARIZATION ?? 'true').toLowerCase() === 'true' && (env.GROQ_API_KEY || env.LLM_API_KEY)) {
     try {
-      ready = await summarizeArticles(fresh, env);
+      const result = await summarizeArticles(fresh, env);
+      ready = result.articles;
+      droppedByDedup = result.dropped;
       const summarized = ready.filter((a) => a.summary).length;
       const highlights = ready.filter((a) => a.highlight).length;
-      logger.info(`Résumé LLM : ${summarized} articles résumés, ${highlights} marqués à lire en entier.`);
+      logger.info(
+        `Résumé LLM : ${summarized} articles résumés, ${highlights} marqués à lire en entier, ` +
+        `${droppedByDedup.length} doublons de sujet fusionnés.`,
+      );
     } catch (err) {
       logger.warn(`Résumé LLM désactivé (${err.message}) — envoi sans résumés.`);
     }
@@ -67,31 +73,63 @@ export async function runOnce(env = process.env, dryRun = false) {
     logger.info('Résumé LLM désactivé (ENABLE_SUMMARIZATION=false ou clé Groq absente).');
   }
 
-  // 6. Mode dry-run : on affiche ce qui aurait été envoyé sans rien envoyer.
+  // 6. Message "À la une du jour" : les N premiers articles (tri par
+  //    pertinence du LLM), puis le reste en embeds. Sans classement LLM,
+  //    tout part en embeds (un "top" sans pertinence n'aurait pas de sens).
+  const hasRanking = ready.some((a) => typeof a.relevance === 'number');
+  const topEnabled = String(env.ENABLE_TOP3 ?? 'true').toLowerCase() === 'true' && hasRanking;
+  const topN = Math.max(0, Number(env.TOP_N) || 3);
+  const topArticles = topEnabled && ready.length > 0 ? ready.slice(0, Math.min(topN, ready.length)) : [];
+  const rest = topArticles.length > 0 ? ready.slice(topArticles.length) : ready;
+
+  // 7. Mode dry-run : on affiche ce qui aurait été envoyé sans rien envoyer.
   if (dryRun) {
     logger.info(`[DRY-RUN] ${ready.length} articles auraient été envoyés :`);
-    for (const article of ready) {
+    if (topArticles.length > 0) {
+      console.log(`\n=== Message "À la une" (${topArticles.length}) ===`);
+      console.log(buildTopContent(topArticles));
+    }
+    if (rest.length > 0) {
+      console.log(`\n=== Embeds (${rest.length}) ===`);
+    }
+    for (const article of rest) {
       const embed = buildEmbed(article);
       console.log(`  - ${embed.title} (${article.source})`);
       console.log(`    ${article.link}`);
-      console.log(`    couleur=#${embed.color.toString(16)} pertinence=${article.relevance ?? '-'} à-lire=${article.highlight ? 'oui' : 'non'}`);
+      console.log(`    couleur=#${embed.color.toString(16)} pertinence=${article.relevance ?? '-'} à-lire=${article.highlight ? 'oui' : 'non'} gravité=${article.severity ?? '-'}`);
       if (article.summary) console.log(`    résumé: ${article.summary}`);
+      if (article.technicalDetails) console.log(`    détails: ${article.technicalDetails}`);
+    }
+    if (droppedByDedup.length > 0) {
+      console.log(`\n=== ${droppedByDedup.length} doublons de sujet fusionnés (non envoyés) ===`);
+      for (const article of droppedByDedup) {
+        console.log(`  - ${article.title} (${article.source})`);
+      }
     }
     // Ne pas marquer les articles comme envoyés puisqu'on n'a rien envoyé.
     rollbackDuplicates(fresh);
     return { total: allArticles.length, sent: 0, errors: 0 };
   }
 
-  // 7. Envoi réel sur Discord
+  // 8. Envoi réel sur Discord
   if (!env.DISCORD_WEBHOOK_URL) {
     logger.error('DISCORD_WEBHOOK_URL est manquant dans .env — arrêt avant envoi.');
     return { total: allArticles.length, sent: 0, errors: 1 };
   }
 
   try {
-    const messages = await sendNews(ready, env);
-    logger.info(`Envoyé ${ready.length} articles dans ${messages} message(s) Discord.`);
-    return { total: allArticles.length, sent: ready.length, errors: 0 };
+    const options = {
+      botUsername: env.BOT_USERNAME || 'Cyber News Bot',
+      botIconUrl: env.BOT_ICON_URL || undefined,
+    };
+    if (topArticles.length > 0) {
+      await sendTopContent(topArticles, env.DISCORD_WEBHOOK_URL, options);
+      console.log(`[send] Message "À la une" envoyé (${topArticles.length} articles)`);
+    }
+    const messages = await sendNews(rest.length > 0 ? rest : [], env);
+    const sent = topArticles.length + rest.length;
+    logger.info(`Envoyé ${sent} articles (${topArticles.length} à la une + ${rest.length} en embeds) dans ${messages + (topArticles.length > 0 ? 1 : 0)} message(s) Discord.`);
+    return { total: allArticles.length, sent, errors: 0 };
   } catch (err) {
     logger.error(`Échec de l'envoi Discord : ${err.message}`);
     return { total: allArticles.length, sent: 0, errors: 1 };

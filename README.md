@@ -8,15 +8,15 @@ Il récupère les derniers articles de plusieurs flux RSS, filtre ceux déjà pu
 
 ```
 flux RSS → fetchNews.js → filterNews.js → summarize.js → sendDiscord.js → webhook Discord
-             (récupération)   (date + mots-clés   (résumé LLM      (embeds, max 10
-                              + anti-doublon)      + pertinence)     par message)
+             (récupération)   (date + mots-clés   (résumé LLM      (À la une + embeds,
+                              + anti-doublon)      + pertinence)     max 10/message)
 ```
 
 1. **Récupération** : lit chaque flux de `config/sources.json` en parallèle (`rss-parser`). Si un flux échoue (et qu'un `fallbackUrl` est défini), il est réessayé ; sinon l'erreur est logguée et les autres sources continuent.
 2. **Filtrage** : ne garde que les articles des dernières `LOOKBACK_HOURS` (24 par défaut), puis applique les filtres `INCLUDE_KEYWORDS` / `EXCLUDE_KEYWORDS`.
 3. **Anti-doublon** : les liens déjà envoyés sont conservés dans `sent-articles.json`. Un lien déjà vu (ou présent dans plusieurs flux) n'est jamais re-envoyé.
-4. **Résumé LLM** (optionnel, Groq) : chaque article reçoit un résumé de 1-2 phrases en français, une note de pertinence (1-10), et un flag « à lire en entier ». Les articles sont ensuite réordonnés du plus pertinent au moins pertinent.
-5. **Envoi** : les articles sont regroupés en messages d'au plus 10 embeds (limite Discord). Les mots-clés prioritaires colorent l'embed en **rouge** (CVE, zero-day, exploit, vulnérabilité critique) ou **orange** (ransomware, faille), sinon **vert**. Les articles à lire en entier portent un badge **⭐**.
+4. **Résumé LLM** (optionnel, Groq) : chaque article reçoit un résumé de 1-2 phrases en français, des **détails techniques** (CVE, CVSS, produit/version affectés, vecteur, IoC), une note de pertinence (1-10), une **gravité** (critical/high/medium/low) et un flag « à lire en entier ». Les articles couvrant le **même sujet** sont fusionnés (seule la meilleure source est gardée) puis classés du plus pertinent au moins pertinent.
+5. **Envoi** : un message **« À la une du jour »** présente les `TOP_N` meilleurs articles (texte cliquable + résumé), puis les autres partent en embeds (max 10 par message). La couleur de l'embed suit la **gravité LLM** (rouge = critical, orange = high, vert sinon ; les mots-clés CVE/ransomware/faille servent de repli sans LLM). Les articles à lire en entier portent un badge **⭐**.
 
 ## Prérequis
 
@@ -58,6 +58,9 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/<id>/<token>
 | `LLM_MODEL` | `llama-3.3-70b-versatile` | Modèle Groq utilisé |
 | `ENABLE_SUMMARIZATION` | `true` | Activer/désactiver le résumé LLM |
 | `MAX_ARTICLES_TO_SUMMARIZE` | `12` | Nombre max d'articles résumés par cycle (quota free tier) |
+| `ENABLE_SMART_DEDUP` | `true` | Fusionner les articles couvrant le même sujet (une seule source gardée) |
+| `ENABLE_TOP3` | `true` | Afficher un message « À la une » en tête du digest |
+| `TOP_N` | `3` | Nombre d'articles dans le message « À la une » |
 | `SCHEDULE_CRON` | `0 8 * * *` | Planification quotidienne (Europe/Paris) |
 | `BOT_USERNAME` | `Cyber News Bot` | Nom affiché dans Discord |
 | `BOT_ICON_URL` | *(vide)* | URL d'avatar du bot |
@@ -76,7 +79,11 @@ Le bot peut faire résumer chaque article par un LLM gratuit et classer le diges
 
 Le modèle par défaut `llama-3.3-70b-versatile` est gratuit (quota ≈ 14 400 tokens/jour, soit ~12 résumés/jour). Si le LLM échoue ou si la clé est absente, le bot envoie quand même les articles (sans résumé) — le résumé ne bloque jamais l'envoi.
 
-Testez avec `npm run dry-run` : la sortie affiche le résumé et la note de pertinence de chaque article sans rien poster sur Discord.
+Le LLM fournit par article : un **résumé** en français, des **détails techniques** (CVE, CVSS, produit affecté, vecteur, IoC), une **note de pertinence** (1-10), une **gravité** (critical/high/medium/low), et un **identifiant de sujet** utilisé pour :
+- **fusionner les doublons** : si deux sources (ex : The Hacker News + BleepingComputer) couvrent le même incident, une seule est conservée (la mieux notée) ;
+- **le message « À la une »** : les `TOP_N` meilleurs articles du jour en tête du digest.
+
+Testez avec `npm run dry-run` : la sortie affiche le résumé, les détails techniques, la note, la gravité, la liste des doublons fusionnés et le contenu du message « À la une », sans rien poster sur Discord.
 
 ## Utilisation
 

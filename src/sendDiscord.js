@@ -66,18 +66,33 @@ function formatDate(dateStr) {
 }
 
 /**
+ * Couleur d'un embed selon la gravité annoncée par le LLM (si présente),
+ * sinon par mots-clés.
+ * @param {object} article
+ * @param {{critical?: string[], high?: string[]}} keywords
+ * @returns {number}
+ */
+function pickSeverityColor(article, keywords) {
+  if (article.severity === 'critical') return COLOR_RED;
+  if (article.severity === 'high') return COLOR_ORANGE;
+  if (article.severity === 'medium' || article.severity === 'low') return COLOR_GREEN;
+  const text = `${article.title} ${article.description} ${article.summary || ''}`;
+  return pickColor(text, keywords);
+}
+
+/**
  * Construit l'objet embed Discord d'un article.
  * @param {object} article
  * @param {object} config
  * @returns {object}
  */
 export function buildEmbed(article, config = {}) {
-  const text = `${article.title} ${article.description} ${article.summary || ''}`;
   const title = article.highlight ? `⭐ ${article.title}` : article.title;
 
-  // Description = résumé LLM (s'il existe) puis description brute du flux.
+  // Description = résumé LLM, détails techniques (LLM) puis description du flux.
   const parts = [];
   if (article.summary) parts.push(`**Résumé :** ${article.summary}`);
+  if (article.technicalDetails) parts.push(`**Détails techniques :** ${article.technicalDetails}`);
   if (article.description) parts.push(article.description);
   const description = parts.join('\n\n').slice(0, 2048);
 
@@ -85,7 +100,7 @@ export function buildEmbed(article, config = {}) {
     title: title.slice(0, 256),
     url: article.link,
     description: description || undefined,
-    color: pickColor(text, config.keywords),
+    color: pickSeverityColor(article, config.keywords),
     footer: {
       text: `${article.source}${article.pubDate ? ` · ${formatDate(article.pubDate)}` : ''}`,
     },
@@ -170,4 +185,43 @@ export async function sendNews(articles, env = process.env) {
     console.log(`[send] Message envoyé (${batch.length} articles)`);
   }
   return batches.length;
+}
+
+/**
+ * Construit le contenu texte du message "Top N du jour" (markdown Discord).
+ * @param {Array<object>} articles déjà triés par pertinence décroissante
+ * @returns {string}
+ */
+export function buildTopContent(articles) {
+  const lines = articles.map((a, i) => {
+    const badge = a.highlight ? ' ⭐' : '';
+    const summary = a.summary ? `\n_${a.summary}_` : '';
+    return `${i + 1}. **${a.title}** — ${a.source}${badge}\n<${a.link}>${summary}`;
+  });
+  return `🔥 **À la une aujourd'hui** 🔥\n\n${lines.join('\n\n')}`;
+}
+
+/**
+ * Envoie le message "Top N du jour" via le webhook.
+ * @param {Array<object>} articles
+ * @param {string} webhookUrl
+ * @param {{botUsername?: string, botIconUrl?: string}} options
+ */
+export async function sendTopContent(articles, webhookUrl, options = {}) {
+  const payload = {
+    username: options.botUsername || 'Cyber News Bot',
+    content: buildTopContent(articles),
+  };
+  if (options.botIconUrl) payload.avatar_url = options.botIconUrl;
+
+  const res = await fetch(webhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`Discord a répondu ${res.status} : ${detail.slice(0, 300)}`);
+  }
 }

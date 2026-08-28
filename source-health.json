@@ -2,85 +2,85 @@
   "sources": {
     "The Hacker News": {
       "consecutiveFailures": 0,
-      "lastOk": "2026-08-27T16:58:31.287Z",
+      "lastOk": "2026-08-28T17:48:17.123Z",
       "lastFail": null,
       "alerted": false
     },
     "BleepingComputer": {
       "consecutiveFailures": 0,
-      "lastOk": "2026-08-27T16:58:31.287Z",
+      "lastOk": "2026-08-28T17:48:17.123Z",
       "lastFail": null,
       "alerted": false
     },
     "Krebs on Security": {
       "consecutiveFailures": 0,
-      "lastOk": "2026-08-27T16:58:31.287Z",
+      "lastOk": "2026-08-28T17:48:17.123Z",
       "lastFail": null,
       "alerted": false
     },
     "Dark Reading": {
       "consecutiveFailures": 0,
-      "lastOk": "2026-08-27T16:58:31.287Z",
+      "lastOk": "2026-08-28T17:48:17.123Z",
       "lastFail": null,
       "alerted": false
     },
     "CERT-FR Avis": {
       "consecutiveFailures": 0,
-      "lastOk": "2026-08-27T16:58:31.287Z",
+      "lastOk": "2026-08-28T17:48:17.123Z",
       "lastFail": null,
       "alerted": false
     },
     "CERT-FR Alertes": {
       "consecutiveFailures": 0,
-      "lastOk": "2026-08-27T16:58:31.287Z",
+      "lastOk": "2026-08-28T17:48:17.123Z",
       "lastFail": null,
       "alerted": false
     },
     "ZDNet France Sécurité": {
       "consecutiveFailures": 0,
-      "lastOk": "2026-08-27T16:58:31.287Z",
+      "lastOk": "2026-08-28T17:48:17.123Z",
       "lastFail": null,
       "alerted": false
     },
     "The Record": {
       "consecutiveFailures": 0,
-      "lastOk": "2026-08-27T16:58:31.287Z",
+      "lastOk": "2026-08-28T17:48:17.123Z",
       "lastFail": null,
       "alerted": false
     },
     "CISA Advisories": {
       "consecutiveFailures": 0,
-      "lastOk": "2026-08-27T16:58:31.287Z",
+      "lastOk": "2026-08-28T17:48:17.123Z",
       "lastFail": null,
       "alerted": false
     },
     "Help Net Security": {
       "consecutiveFailures": 0,
-      "lastOk": "2026-08-27T16:58:31.287Z",
+      "lastOk": "2026-08-28T17:48:17.123Z",
       "lastFail": null,
       "alerted": false
     },
     "Malwarebytes Labs": {
       "consecutiveFailures": 0,
-      "lastOk": "2026-08-27T16:58:31.287Z",
+      "lastOk": "2026-08-28T17:48:17.123Z",
       "lastFail": null,
       "alerted": false
     },
     "Schneier on Security": {
       "consecutiveFailures": 0,
-      "lastOk": "2026-08-27T16:58:31.287Z",
+      "lastOk": "2026-08-28T17:48:17.123Z",
       "lastFail": null,
       "alerted": false
     },
     "The Register Security": {
       "consecutiveFailures": 0,
-      "lastOk": "2026-08-27T16:58:31.287Z",
+      "lastOk": "2026-08-28T17:48:17.123Z",
       "lastFail": null,
       "alerted": false
     },
     "CSO Online": {
       "consecutiveFailures": 0,
-      "lastOk": "2026-08-27T16:58:31.287Z",
+      "lastOk": "2026-08-28T17:48:17.123Z",
       "lastFail": null,
       "alerted": false
     }

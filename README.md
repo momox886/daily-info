@@ -83,7 +83,7 @@ Le bot peut faire résumer chaque article par un LLM gratuit et classer le diges
    GROQ_API_KEY=gsk_xxxxxxxxxxxx
    ```
 
-Le modèle par défaut `llama-3.3-70b-versatile` est gratuit (quota ≈ 14 400 tokens/jour, soit ~12 résumés/jour). Si le LLM échoue ou si la clé est absente, le bot envoie quand même les articles (sans résumé) — le résumé ne bloque jamais l'envoi.
+Le modèle par défaut `llama-3.3-70b-versatile` est gratuit (quota ≈ 14 400 tokens/jour, soit ~15 résumés/jour). Si le LLM échoue ou si la clé est absente, le bot envoie quand même les articles (sans résumé) — le résumé ne bloque jamais l'envoi. **Sans clé API, le message « À la une du jour » n'est pas envoyé** (il nécessite le ranking LLM par pertinence).
 
 Le LLM fournit par article : un **résumé** en français, des **détails techniques** (CVE, CVSS, produit affecté, vecteur, IoC), une **note de pertinence** (1-10), une **gravité** (critical/high/medium/low), et un **identifiant de sujet** utilisé pour :
 - **fusionner les doublons** : si deux sources (ex : The Hacker News + BleepingComputer) couvrent le même incident, une seule est conservée (la mieux notée) ;
@@ -126,7 +126,7 @@ Le dépôt contient déjà `.github/workflows/daily-news.yml` qui tourne chaque 
 1. Poussez ce projet sur GitHub.
 2. Onglet **Settings** → **Secrets and variables** → **Actions** → **New repository secret** :
    - `DISCORD_WEBHOOK_URL` : l'URL du webhook
-   - `GROQ_API_KEY` : la clé Groq (pour les résumés LLM)
+   - `GROQ_API_KEY` : la clé Groq (**obligatoire** pour les résumés LLM et le message « À la une du jour »)
 3. Le workflow s'exécutera automatiquement. L'anti-doublon (`sent-articles.json`) et l'état de santé des sources (`source-health.json`) sont **committés dans le repo** à chaque exécution : contrairement au cache GitHub (expiré après 7 jours), l'état persiste indéfiniment et évite les doublons d'une exécution à l'autre.
 4. Vous pouvez aussi déclencher une exécution manuelle : onglet **Actions** → **daily-news** → **Run workflow**.
 

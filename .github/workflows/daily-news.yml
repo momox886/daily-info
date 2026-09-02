@@ -2,9 +2,11 @@ name: daily-news
 
 on:
   schedule:
-    # Tous les jours à 06:00 UTC (= 08:00 heure de Paris en hiver,
-    # 07:00 en été). Le cron GitHub est toujours en UTC.
-    - cron: "0 6 * * *"
+    # Tous les jours à 04:00 UTC (= 06:00 heure de Paris en été,
+    # 05:00 en été). Le cron GitHub est toujours en UTC.
+    # Avancé de 2h par rapport à 06:00 UTC pour compenser les retards
+    # connus de GitHub Actions sur le tier gratuit (parfois > 2h).
+    - cron: "0 4 * * *"
   workflow_dispatch: # permet un lancement manuel depuis l'onglet Actions
 
 permissions:

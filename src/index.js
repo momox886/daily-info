@@ -85,11 +85,11 @@ export async function runOnce(env = process.env, dryRun = false) {
     logger.info('Résumé LLM désactivé (ENABLE_SUMMARIZATION=false ou clé Groq absente).');
   }
 
-  // 6. Message "À la une du jour" : les N premiers articles (tri par
-  //    pertinence du LLM), puis le reste en embeds. Sans classement LLM,
-  //    tout part en embeds (un "top" sans pertinence n'aurait pas de sens).
+  // 6. Message "À la une du jour" : les N premiers articles. Si un classement
+  //    LLM est disponible, ils sont triés par pertinence ; sinon les N plus
+  //    récents (ordre naturel des flux) sont mis en avant.
   const hasRanking = ready.some((a) => typeof a.relevance === 'number');
-  const topEnabled = String(env.ENABLE_TOP3 ?? 'true').toLowerCase() === 'true' && hasRanking;
+  const topEnabled = String(env.ENABLE_TOP3 ?? 'true').toLowerCase() === 'true';
   const topN = Math.max(0, Number(env.TOP_N) || 3);
   const topArticles = topEnabled && ready.length > 0 ? ready.slice(0, Math.min(topN, ready.length)) : [];
   const rest = topArticles.length > 0 ? ready.slice(topArticles.length) : ready;

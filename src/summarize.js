@@ -4,7 +4,7 @@
 // Fusionne les articles couvrant le même sujet (dédoublonnage intelligent)
 // puis ordonne du plus pertinent au moins pertinent.
 
-const DEFAULT_MODEL = 'llama-3.3-70b-versatile';
+const DEFAULT_MODEL = 'qwen/qwen3.8-27b';
 const DEFAULT_BASE_URL = 'https://api.groq.com/openai/v1';
 const DEFAULT_MAX_ARTICLES = 12; // limite des résumés par cycle (quotas free tier)
 

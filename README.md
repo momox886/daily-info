@@ -58,7 +58,7 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/<id>/<token>
 | `EXCLUDE_KEYWORDS` | *(vide)* | Exclure les articles contenant un de ces mots-clés |
 | `PRIORITY_KEYWORDS` | voir `.env.example` | Mots-clés de priorité (préfixe `!` = niveau critique) |
 | `GROQ_API_KEY` | *(vide)* | Clé API Groq gratuite (résumés LLM). Vide = envoi sans résumés |
-| `LLM_MODEL` | `llama-3.3-70b-versatile` | Modèle Groq utilisé |
+| `LLM_MODEL` | `qwen/qwen3.8-27b` | Modèle Groq utilisé |
 | `ENABLE_SUMMARIZATION` | `true` | Activer/désactiver le résumé LLM |
 | `MAX_ARTICLES_TO_SUMMARIZE` | `15` | Nombre max d'articles résumés par cycle (quota free tier) |
 | `ENABLE_SMART_DEDUP` | `true` | Fusionner les articles couvrant le même sujet (une seule source gardée) |
@@ -83,7 +83,7 @@ Le bot peut faire résumer chaque article par un LLM gratuit et classer le diges
    GROQ_API_KEY=gsk_xxxxxxxxxxxx
    ```
 
-Le modèle par défaut `llama-3.3-70b-versatile` est gratuit (quota ≈ 14 400 tokens/jour, soit ~15 résumés/jour). Si le LLM échoue ou si la clé est absente, le bot envoie quand même les articles (sans résumé) — le résumé ne bloque jamais l'envoi. **Sans clé API, le message « À la une du jour » n'est pas envoyé** (il nécessite le ranking LLM par pertinence).
+Le modèle par défaut `qwen/qwen3.8-27b` est disponible sur le plan gratuit Groq. Si le LLM échoue ou si la clé est absente, le bot envoie quand même les articles (sans résumé) — le résumé ne bloque jamais l'envoi. Le message **« À la une du jour »** s'envoie toujours : avec le ranking LLM il présente les N articles les plus pertinents, sinon les N plus récents.
 
 Le LLM fournit par article : un **résumé** en français, des **détails techniques** (CVE, CVSS, produit affecté, vecteur, IoC), une **note de pertinence** (1-10), une **gravité** (critical/high/medium/low), et un **identifiant de sujet** utilisé pour :
 - **fusionner les doublons** : si deux sources (ex : The Hacker News + BleepingComputer) couvrent le même incident, une seule est conservée (la mieux notée) ;

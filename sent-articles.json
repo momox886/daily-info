@@ -3077,6 +3077,27 @@
     "https://www.zdnet.fr/pratique/hdmi-displayport-thunderbolt-quelle-connexion-choisir-pour-vos-ecrans-506295.htm#xtor=123456",
     "https://www.zdnet.fr/pratique/defragmenter-son-disque-pourquoi-ce-reflexe-dhier-est-presque-devenu-inutile-506287.htm#xtor=123456",
     "https://www.helpnetsecurity.com/2026/10/25/week-in-review-php-vulnerabilities-patched-exploited-palo-alto-globalprotect-vpn-flaw/",
-    "https://www.theregister.com/security/2026/10/24/autonomous-attack-agent-in-skynet-mode-hijacks-other-models-to-carry-out-its-evil-deeds/5305215"
+    "https://www.theregister.com/security/2026/10/24/autonomous-attack-agent-in-skynet-mode-hijacks-other-models-to-carry-out-its-evil-deeds/5305215",
+    "https://thehackernews.com/2026/10/microsoft-365-token-replay-attacks.html",
+    "https://thehackernews.com/2026/10/gheist-uses-stolen-github-tokens-to.html",
+    "https://thehackernews.com/2026/10/malicious-file-in-downloads-folder.html",
+    "https://thehackernews.com/2026/10/unpatched-tailscale-ssh-flaws-could-let.html",
+    "https://thehackernews.com/2026/10/php2shell-exploitation-hits-government.html",
+    "https://www.bleepingcomputer.com/news/security/php2shell-security-flaws-now-sucessfully-exploited-in-the-wild/",
+    "https://www.bleepingcomputer.com/news/security/ai-coding-agents-hijacked-using-agentsmd-file-in-downloads-folder/",
+    "https://www.zdnet.fr/pratique/un-airtag-vous-piste-comment-le-reperer-et-le-desactiver-sur-iphone-comme-sur-android-506318.htm#xtor=123456",
+    "https://www.helpnetsecurity.com/2026/10/26/witness-open-source-software-supply-chain-tool/",
+    "https://www.helpnetsecurity.com/2026/10/26/linux-foundation-open-source-ai-slop/",
+    "https://www.helpnetsecurity.com/2026/10/26/product-showcase-stellar-cyber-isoc-platform/",
+    "https://www.helpnetsecurity.com/2026/10/26/arrakis-dormant-ai-agent-risks-report/",
+    "https://www.helpnetsecurity.com/2026/10/26/transunion-synthetic-identity-fraud-risks-report/",
+    "https://www.helpnetsecurity.com/2026/10/26/reddit-r-opensource-ai-ban/",
+    "https://www.helpnetsecurity.com/2026/10/26/google-elephant-goldfish-model-plugin/",
+    "https://www.helpnetsecurity.com/2026/10/26/openssl-4-1-0-released/",
+    "https://www.malwarebytes.com/blog/news/2026/10/a-week-in-security-october-19-october-25",
+    "https://www.theregister.com/networks/2026/10/26/work-to-protect-dns-from-quantum-decryption-attacks-is-speeding-up/5305274",
+    "https://www.csoonline.com/article/4239703/what-eviltokens-teaches-us-about-defending-against-ai-assisted-attacks.html",
+    "https://www.csoonline.com/article/569075/the-10-most-powerful-cybersecurity-companies.html",
+    "https://www.csoonline.com/article/4240151/bright-security-introduces-star-fuzzer-agentic-fuzzing-that-writes-its-own-harnesses-and-proves-every-finding.html"
   ]
 }
